@@ -1,4 +1,4 @@
-
+import re
 import os
 import uuid
 import tkinter as tk
@@ -48,7 +48,16 @@ def make_target(filename, find_text, replace_text, prefix, suffix):
     stem, ext = split_name(filename)
 
     if find_text:
-        stem = stem.replace(find_text, replace_text)
+        try:
+            stem = re.sub(
+                pattern=find_text,
+                repl=replace_text,
+                string=stem
+            )
+        except re.error as e:
+            raise ValueError(
+                f"정규표현식 오류:\n{e}"
+            )
 
     return prefix + stem + suffix + ext
 
