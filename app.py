@@ -103,20 +103,23 @@ def make_target(filename, find_text, replace_text,
     return prefix + stem + suffix + ext
 
 
+
 def create_plan(folder, find_text, replace_text,
                 prefix, suffix, use_regex):
 
     files = get_files(folder)
     existing = os.listdir(folder)
 
-    # 잘못된 정규식은 매칭 파일이 없어도 검사
     if use_regex and find_text:
         try:
             re.compile(find_text)
         except re.error as e:
-            raise ValueError(f"정규표현식 오류:\n{e}") from e
+            raise ValueError(
+                f"정규표현식 오류:\n{e}"
+            ) from e
 
-    plan = []
+    # 변경 대상 파일과 변경하지 않는 파일 구분
+    candidates = []
 
     for old in files:
         new = make_target(
@@ -124,17 +127,41 @@ def create_plan(folder, find_text, replace_text,
             prefix, suffix, use_regex
         )
         validate_name(new)
+        candidates.append((old, new))
 
-        if old != new:
-            plan.append((old, new))
+    # 변경하지 않는 파일과 기존 폴더 이름은 보호
+    protected = {
+        name_key(name)
+        for name in existing
+        if name not in files
+    }
 
-    targets = [name_key(new) for _, new in plan]
+    for old, new in candidates:
+        if old == new:
+            protected.add(name_key(old))
 
-    if len(targets) != len(set(targets)):
-        raise ValueError(
-            "변경 결과에 중복 파일명이 있습니다."
-        )
+    used = set(protected)
+    plan = []
 
+    for old, desired in candidates:
+        if old == desired:
+            continue
+
+        new = desired
+        stem, ext = split_name(desired)
+        number = 1
+
+        # 중복 이름이 있으면 (1), (2), (3) 추가
+        while name_key(new) in used:
+            new = f"{stem} ({number}){ext}"
+            validate_name(new)
+            number += 1
+
+        used.add(name_key(new))
+        plan.append((old, new))
+
+    # 기존 파일명과 충돌하면 임시 이름을
+    # 거쳐 변경할 수 있는지 검사
     moving = {name_key(old) for old, _ in plan}
 
     for old, new in plan:
@@ -142,10 +169,11 @@ def create_plan(folder, find_text, replace_text,
             if name_key(name) == name_key(new):
                 if name_key(name) not in moving:
                     raise ValueError(
-                        f"기존 파일 또는 폴더와 충돌:\n{new}"
+                        f"기존 파일과 충돌:\n{new}"
                     )
 
     return plan
+
 
 
 def execute_plan(folder, plan):
